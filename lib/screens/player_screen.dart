@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'package:palette_generator/palette_generator.dart';
@@ -24,7 +25,7 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late YoutubePlayerController _controller;
   final ApiService _apiService = ApiService();
   bool _autoPlayNext = true;
@@ -34,6 +35,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   late Animation<Color?> _bgAnimation;
   Color _prevBgColor = AppTheme.background;
   late int _currentIndex;
+
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   // 이어보기
   bool _hasSeeked = false;          // 한 번만 seek
@@ -57,6 +61,14 @@ class _PlayerScreenState extends State<PlayerScreen>
         ColorTween(begin: AppTheme.background, end: AppTheme.background)
             .animate(CurvedAnimation(
                 parent: _colorAnimController, curve: Curves.easeInOut));
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.4, end: 0.8).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
 
     _initPlayer(widget.video);
     _extractColor(widget.video);
@@ -224,6 +236,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     // 앱 종료/뒤로가기 시 현재 위치 저장
     _saveCurrentProgress();
     _colorAnimController.dispose();
+    _pulseController.dispose();
     _controller.close();
     super.dispose();
   }
@@ -232,69 +245,97 @@ class _PlayerScreenState extends State<PlayerScreen>
   Widget build(BuildContext context) {
     final videos = widget.playlistVideos;
     final hasNext = videos != null && _currentIndex < videos.length - 1;
-    final currentVideo =
-        videos != null ? videos[_currentIndex] : widget.video;
+    final currentVideo = videos != null ? videos[_currentIndex] : widget.video;
 
     return AnimatedBuilder(
-      animation: _bgAnimation,
+      animation: Listenable.merge([_colorAnimController, _pulseController]),
       builder: (context, child) {
-        return Scaffold(
-          backgroundColor: _bgAnimation.value ?? AppTheme.background,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-              ),
-              onPressed: () => Navigator.pop(context),
-            ),
-            title: Text(
-              currentVideo.title ?? 'Playing',
-              style:
-                  Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 14),
-              overflow: TextOverflow.ellipsis,
-            ),
-            actions: [
-              // 이어보기 배지
-              if (_resumePosition > 5)
-                Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: Chip(
-                    backgroundColor: _accentColor.withOpacity(0.15),
-                    label: Text(
-                      '이어보기 ${_formatDuration(_resumePosition)}',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: _accentColor,
-                          fontWeight: FontWeight.w700),
-                    ),
-                    padding: EdgeInsets.zero,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        return Stack(
+          children: [
+            // 1. Base vibrant color
+            Container(color: _bgAnimation.value ?? AppTheme.background),
+
+            // 2. Ambilight Effect: Dynamically pulsing blurred thumbnail
+            if (currentVideo.thumbnail != null)
+              Positioned.fill(
+                child: Opacity(
+                  opacity: _pulseAnimation.value,
+                  child: Image.network(
+                    currentVideo.thumbnail!,
+                    fit: BoxFit.cover,
                   ),
                 ),
-              if (hasNext)
-                Row(
-                  children: [
-                    Text('연속재생',
-                        style: TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 12)),
-                    Switch(
-                      value: _autoPlayNext,
-                      activeColor: _accentColor,
-                      onChanged: (val) =>
-                          setState(() => _autoPlayNext = val),
-                    ),
-                  ],
+              ),
+
+            // 3. Heavy backdrop filter
+            if (currentVideo.thumbnail != null)
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+                  child: Container(color: Colors.black.withOpacity(0.15)),
                 ),
-            ],
-          ),
-          body: child,
+              ),
+
+            // 4. Main UI Scaffold
+            Scaffold(
+              backgroundColor: Colors.transparent,
+              appBar: AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                leading: IconButton(
+                  icon: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.black12,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                title: Text(
+                  currentVideo.title ?? 'Playing',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 14),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                actions: [
+                  // 이어보기 배지
+                  if (_resumePosition > 5)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Chip(
+                        backgroundColor: _accentColor.withOpacity(0.15),
+                        label: Text(
+                          '이어보기 ${_formatDuration(_resumePosition)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: _accentColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        padding: EdgeInsets.zero,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  if (hasNext)
+                    Row(
+                      children: [
+                        Text(
+                          '연속재생',
+                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                        ),
+                        Switch(
+                          value: _autoPlayNext,
+                          activeColor: _accentColor,
+                          onChanged: (val) => setState(() => _autoPlayNext = val),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              body: child,
+            ),
+          ],
         );
       },
       child: Column(
@@ -337,9 +378,10 @@ class _PlayerScreenState extends State<PlayerScreen>
                   Text(
                     currentVideo.channelName!,
                     style: TextStyle(
-                        color: _accentColor,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13),
+                      color: _accentColor,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
               ],
             ),
@@ -349,14 +391,9 @@ class _PlayerScreenState extends State<PlayerScreen>
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Row(
-                children: [
-                  Text('다음 영상',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontSize: 15)),
-                ],
+              child: Text(
+                '다음 영상',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 15),
               ),
             ),
             Expanded(
@@ -366,12 +403,9 @@ class _PlayerScreenState extends State<PlayerScreen>
                   final v = videos[i];
                   final isPlaying = i == _currentIndex;
                   return Container(
-                    margin: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 4),
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     decoration: BoxDecoration(
-                      color: isPlaying
-                          ? _accentColor.withOpacity(0.1)
-                          : Colors.transparent,
+                      color: isPlaying ? _accentColor.withOpacity(0.1) : Colors.transparent,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: VideoListTile(

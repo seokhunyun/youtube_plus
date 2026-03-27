@@ -4,6 +4,7 @@ import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/playlist_screen.dart';
+import 'screens/ranking_screen.dart';
 import 'screens/settings_screen.dart';
 
 void main() {
@@ -45,6 +46,7 @@ class _MainShellState extends State<MainShell> {
     HomeScreen(),
     SearchScreen(),
     PlaylistScreen(),
+    RankingScreen(),
     SettingsScreen(),
   ];
 
@@ -52,6 +54,7 @@ class _MainShellState extends State<MainShell> {
     _NavItem(icon: Icons.home_rounded, label: '홈'),
     _NavItem(icon: Icons.search_rounded, label: '검색'),
     _NavItem(icon: Icons.playlist_play_rounded, label: '플레이리스트'),
+    _NavItem(icon: Icons.emoji_events_rounded, label: '랭킹'),
     _NavItem(icon: Icons.settings_rounded, label: '설정'),
   ];
 
