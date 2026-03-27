@@ -29,11 +29,29 @@ class _SearchScreenState extends State<SearchScreen>
   String _lastQuery = '';
   String _sortMode = 'date_desc';
 
+  // Pagination for videos
+  final ScrollController _videoScrollCtrl = ScrollController();
+  int _videoOffset = 0;
+  final int _videoLimit = 50;
+  bool _loadingMoreVideos = false;
+  bool _hasMoreVideos = true;
+
   @override
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
+    _videoScrollCtrl.addListener(_onVideoScroll);
     _loadFavorites();
+  }
+
+  void _onVideoScroll() {
+    if (_videoScrollCtrl.position.pixels >=
+            _videoScrollCtrl.position.maxScrollExtent - 500 &&
+        !_searchingVideos &&
+        !_loadingMoreVideos &&
+        _hasMoreVideos) {
+      _loadMoreVideos();
+    }
   }
 
   Future<void> _loadFavorites() async {
@@ -65,12 +83,43 @@ class _SearchScreenState extends State<SearchScreen>
     }
 
     try {
-      final videos = await _api.searchVideos(q, sort: _sortMode);
+      _videoOffset = 0;
+      _hasMoreVideos = true;
+      final videos = await _api.searchVideos(q, sort: _sortMode, limit: _videoLimit, offset: _videoOffset);
       if (mounted && q == _lastQuery) {
-        setState(() { _videoResults = videos; _searchingVideos = false; });
+        setState(() {
+          _videoResults = videos;
+          _searchingVideos = false;
+          _hasMoreVideos = videos.length == _videoLimit;
+          _videoOffset += _videoLimit;
+        });
       }
     } catch (_) {
       if (mounted) setState(() => _searchingVideos = false);
+    }
+  }
+
+  Future<void> _loadMoreVideos() async {
+    if (_lastQuery.isEmpty) return;
+    setState(() => _loadingMoreVideos = true);
+
+    try {
+      final moreVideos = await _api.searchVideos(
+        _lastQuery,
+        sort: _sortMode,
+        limit: _videoLimit,
+        offset: _videoOffset,
+      );
+      if (mounted) {
+        setState(() {
+          _videoResults.addAll(moreVideos);
+          _loadingMoreVideos = false;
+          _hasMoreVideos = moreVideos.length == _videoLimit;
+          _videoOffset += _videoLimit;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingMoreVideos = false);
     }
   }
 
@@ -91,6 +140,7 @@ class _SearchScreenState extends State<SearchScreen>
   void dispose() {
     _queryCtrl.dispose();
     _tabCtrl.dispose();
+    _videoScrollCtrl.dispose();
     super.dispose();
   }
 
@@ -277,8 +327,17 @@ class _SearchScreenState extends State<SearchScreen>
               : _videoResults.isEmpty
                   ? _buildEmptySearch('검색 결과가 없습니다')
                   : ListView.builder(
-                      itemCount: _videoResults.length,
+                      controller: _videoScrollCtrl,
+                      itemCount: _videoResults.length + (_hasMoreVideos ? 1 : 0),
                       itemBuilder: (_, i) {
+                        if (i == _videoResults.length) {
+                          return const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: CircularProgressIndicator(color: AppTheme.accent),
+                            ),
+                          );
+                        }
                         final v = _videoResults[i];
                         return VideoListTile(
                           video: v,

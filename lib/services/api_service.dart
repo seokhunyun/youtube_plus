@@ -65,9 +65,9 @@ class ApiService {
   }
 
   Future<List<Video>> searchVideos(String q,
-      {String? channelId, String sort = 'date_desc', int limit = 50}) {
+      {String? channelId, String sort = 'date_desc', int limit = 50, int offset = 0}) {
     String path =
-        '/videos/search?q=${Uri.encodeComponent(q)}&sort=$sort&limit=$limit';
+        '/videos/search?q=${Uri.encodeComponent(q)}&sort=$sort&limit=$limit&offset=$offset';
     if (channelId != null) path += '&channel_id=$channelId';
     return _get(path, (d) => (d as List).map((e) => Video.fromJson(e)).toList());
   }
